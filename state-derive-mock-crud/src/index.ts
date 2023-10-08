@@ -13,17 +13,23 @@ const articles: Article[] = [
   },
 ]
 
+const INITIAL_AUTO_INCREMENT = 2
+
 const app = new Elysia({ prefix: '/articles' })
-  .get('', () => {
-    return articles
+  .state('autoIncrement', INITIAL_AUTO_INCREMENT)
+  .state('articles', articles)
+  .get('', ({ store }) => {
+    return store.articles
   })
-  .get('/:articleId', ({ params: { articleId } }) => {
-    return articles.find(article => article.id === +articleId) || {}
+  .get('/:articleId', ({ params: { articleId }, store }) => {
+    return store.articles.find(article => article.id === +articleId) || {}
   })
   .post(
     '',
-    ({ body }) => {
-      return { id: 2, ...body }
+    ({ body, store }) => {
+      store.articles.push({ id: store.autoIncrement, ...body })
+      store.autoIncrement++
+      return store.articles[store.articles.length - 1]
     },
     {
       body: t.Object({ title: t.String(), author: t.String() }),
@@ -31,14 +37,13 @@ const app = new Elysia({ prefix: '/articles' })
   )
   .patch(
     '/:articleId',
-    ({ params: { articleId }, body }) => {
+    ({ params: { articleId }, body, store }) => {
       const updateIndex = articles.findIndex(article => article.id === +articleId)
       if (updateIndex < 0) return {}
-      return {
-        id: updateIndex,
-        title: body.title,
-        author: body.author,
-      }
+      store.articles[updateIndex].author = body.author
+      store.articles[updateIndex].title = body.title
+
+      return store.articles[updateIndex]
     },
     {
       body: t.Object({
@@ -47,11 +52,15 @@ const app = new Elysia({ prefix: '/articles' })
       }),
     },
   )
-  .delete('/:articleId', ({ params: { articleId } }) => {
+  .delete('/:articleId', ({ params: { articleId }, store }) => {
     const deleteIndex = articles.findIndex(article => article.id === +articleId)
     if (deleteIndex < 0) return {}
 
-    return { id: +articleId }
+    const deletedArticle = { ...store.articles[deleteIndex] }
+    if (deletedArticle) {
+      store.articles.splice(deleteIndex, 1)
+    }
+    return { id: deletedArticle.id }
   })
 
 app.listen(Bun.env.PORT || 8001, ({ hostname, port }) => {
