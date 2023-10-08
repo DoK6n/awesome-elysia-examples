@@ -18,18 +18,53 @@ const INITIAL_AUTO_INCREMENT = 2
 const app = new Elysia({ prefix: '/articles' })
   .state('autoIncrement', INITIAL_AUTO_INCREMENT)
   .state('articles', articles)
-  .get('', ({ store }) => {
-    return store.articles
+  .derive(({ store }) => ({
+    db: {
+      findMany: async () => store.articles,
+      findUnique: async (args: ArticlesFindUniqueArgs) => {
+        return store.articles.find(article => article.id === args.where.id) || {}
+      },
+      create: async (input: ArticlesCreateInput) => {
+        store.articles.push({ id: store.autoIncrement, ...input.data })
+        store.autoIncrement++
+        return store.articles[store.articles.length - 1]
+      },
+      update: async (args: ArticlesUpdateArgs) => {
+        const updateIndex = store.articles.findIndex(article => article.id === args.where.id)
+        if (updateIndex < 0) return {}
+
+        store.articles[updateIndex].author = args.data.author
+        store.articles[updateIndex].title = args.data.title
+        return store.articles[updateIndex]
+      },
+      delete: async (args: ArticlesDeleteArgs) => {
+        const deleteIndex = store.articles.findIndex(article => article.id === args.where.id)
+        if (deleteIndex < 0) return {}
+
+        const deletedArticle = { ...store.articles[deleteIndex] }
+        if (deletedArticle) {
+          store.articles.splice(deleteIndex, 1)
+        }
+        return { id: deletedArticle.id }
+      },
+    },
+  }))
+  .get('', async ({ db }) => {
+    return await db.findMany()
   })
-  .get('/:articleId', ({ params: { articleId }, store }) => {
-    return store.articles.find(article => article.id === +articleId) || {}
+  .get('/:articleId', async ({ params: { articleId }, db }) => {
+    return await db.findUnique({
+      where: {
+        id: +articleId,
+      },
+    })
   })
   .post(
     '',
-    ({ body, store }) => {
-      store.articles.push({ id: store.autoIncrement, ...body })
-      store.autoIncrement++
-      return store.articles[store.articles.length - 1]
+    async ({ body, db }) => {
+      return await db.create({
+        data: body,
+      })
     },
     {
       body: t.Object({ title: t.String(), author: t.String() }),
@@ -37,13 +72,11 @@ const app = new Elysia({ prefix: '/articles' })
   )
   .patch(
     '/:articleId',
-    ({ params: { articleId }, body, store }) => {
-      const updateIndex = articles.findIndex(article => article.id === +articleId)
-      if (updateIndex < 0) return {}
-      store.articles[updateIndex].author = body.author
-      store.articles[updateIndex].title = body.title
-
-      return store.articles[updateIndex]
+    async ({ params: { articleId }, body, db }) => {
+      return await db.update({
+        where: { id: +articleId },
+        data: body,
+      })
     },
     {
       body: t.Object({
@@ -52,15 +85,10 @@ const app = new Elysia({ prefix: '/articles' })
       }),
     },
   )
-  .delete('/:articleId', ({ params: { articleId }, store }) => {
-    const deleteIndex = articles.findIndex(article => article.id === +articleId)
-    if (deleteIndex < 0) return {}
-
-    const deletedArticle = { ...store.articles[deleteIndex] }
-    if (deletedArticle) {
-      store.articles.splice(deleteIndex, 1)
-    }
-    return { id: deletedArticle.id }
+  .delete('/:articleId', async ({ params: { articleId }, db }) => {
+    return await db.delete({
+      where: { id: +articleId },
+    })
   })
 
 app.listen(Bun.env.PORT || 8001, ({ hostname, port }) => {
