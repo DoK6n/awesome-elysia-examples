@@ -50,5 +50,8 @@ export const dbClient = new Elysia()
   .state('autoIncrement', INITIAL_AUTO_INCREMENT)
   .state('articles', articles)
   .derive(({ store }) => ({
-    dbClient: makeDbClient(store),
+    dbClient: makeDbClient({
+      autoIncrement: store.autoIncrement,
+      articles: store.articles,
+    }),
   }))
